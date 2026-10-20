@@ -184,7 +184,15 @@ NAS 上 `docker pull` 即可，不再需要 `docker save` / `scp` / `docker load
 
 ### 1. 登录
 
-先在 ACR 控制台创建命名空间和镜像仓库，然后：
+先在 ACR 控制台创建命名空间和镜像仓库。如果还没有本地配置：
+
+```bash
+cp docker/.env.example docker/.env
+# 编辑 docker/.env，至少填写：
+# DSH_TAVERN_IMAGE=<仓库域名>/<命名空间>/<仓库名>:<标签>
+```
+
+然后登录（只需一次，Docker 会记住凭据）：
 
 ```bash
 ACR=<你的 ACR 实例域名>     # 例如 crpi-xxxx.<region>.personal.cr.aliyuncs.com
@@ -196,53 +204,66 @@ docker login --username=<阿里云账号> "$ACR"
 
 ### 2. 推送
 
+`docker/push.sh` 会自动读取 `docker/.env` 里的 `DSH_TAVERN_IMAGE`，
+解析出仓库域名、命名空间、仓库名和标签。正常推送只需：
+
 ```bash
 cd dsh-tavern
-
-REGISTRY="$ACR" \
-NAMESPACE=<命名空间> \
-REMOTE_IMAGE=<仓库名> \
-./docker/push.sh 3.0.0
+./docker/push.sh
 ```
 
-脚本会构建、打标签并推送 `3.0.0` 与 `latest` 两个标签，最终地址为：
-
-```
-$ACR/<命名空间>/<仓库名>:3.0.0
-```
-
-如果本地已经有验证过的 `dsh-tavern:3.0.0`，可以跳过重新构建：
+推送 `.env` 中配置的标签（同时更新 `latest`）。如果本地已经有验证过的同标签镜像，
+可以跳过构建：
 
 ```bash
-SKIP_BUILD=1 \
-REGISTRY="$ACR" \
+SKIP_BUILD=1 ./docker/push.sh
+```
+
+临时推送其它标签（不会修改 `.env`）：
+
+```bash
+./docker/push.sh 3.0.1
+```
+
+没有 `.env`，或想临时覆盖仓库地址时，也可以显式传入：
+
+```bash
+REGISTRY=<仓库域名> \
 NAMESPACE=<命名空间> \
 REMOTE_IMAGE=<仓库名> \
 ./docker/push.sh 3.0.0
 ```
 
-> 本地镜像仍叫 `dsh-tavern`，由 `REMOTE_IMAGE` 映射到远端仓库名；
-> 远端仓库名与本地一致时可省略 `REMOTE_IMAGE`。
-> 建议把 `ACR`、命名空间等个人配置写进本地环境变量或 `.env`，不要提交到仓库。
+> 推荐直接维护 `docker/.env`：compose 也用这份配置，改标签只需改一处。
+> 只想确认解析结果、不执行 Docker：
+
+```bash
+DRY_RUN=1 ./docker/push.sh
+```
 
 ### 3. NAS 拉取
 
-```bash
-ACR=<你的 ACR 实例域名>
-NS=<命名空间>
-REPO=<仓库名>
+在 NAS 的 compose 目录（与 `.env` 同级）：
 
-docker login --username=<阿里云账号> "$ACR"     # 私有仓库需要；公开仓库可跳过
-docker pull "$ACR/$NS/$REPO:3.0.0"
+```bash
+# 私有仓库先登录（只需一次）
+docker login --username=<阿里云账号> <ACR>
+
+docker compose pull
+docker compose up -d
 ```
 
-然后把 `docker run` / compose 的镜像名换成 `"$ACR/$NS/$REPO:3.0.0"`。
+也可以直接拉取 `.env` 中配置的镜像：
+
+```bash
+IMAGE="$(grep -E '^DSH_TAVERN_IMAGE=' .env | tail -n1 | cut -d= -f2-)"
+docker pull "$IMAGE"
+```
 
 > 如果 ACR 仓库设为**公开**，NAS 上无需登录即可拉取
 > （但仍建议保留 lucky 的 Basic Auth，不要直接把 3080 暴露到公网）。
 >
-> 也支持其它 OCI 仓库（如 GHCR）：把 `REGISTRY` / `NAMESPACE` / `REMOTE_IMAGE`
-> 换成对应值即可。
+> 也支持其它 OCI 仓库（如 GHCR）：把 `DSH_TAVERN_IMAGE` 换成对应地址即可。
 
 ---
 
@@ -284,14 +305,15 @@ services:
       - ${DSH_TAVERN_DATA:-/path/to/dsh-tavern}:/home/tavern/.dsh-tavern
 ```
 
-也可以在同目录新建 `.env`（已被 `.gitignore` 忽略，不要提交）：
+也可以直接复制仓库里的示例配置到同目录：
 
 ```bash
-DSH_TAVERN_IMAGE=your-registry.example.com/your-namespace/dsh-tavern:3.0.0
-DSH_TAVERN_DATA=/path/to/dsh-tavern
-DSH_TAVERN_TRUSTED_HOSTS=tavern.example.com
-DSH_TAVERN_HTTP_PORT=3080
+cp docker/.env.example .env
+# 再按实际情况修改 .env
 ```
+
+`.env` 已被 `.gitignore` 忽略，不会提交；`docker/push.sh` 也会读取其中的
+`DSH_TAVERN_IMAGE`。
 
 启动：
 

@@ -16,6 +16,10 @@ data
 output
 node_modules
 
+# 本地部署配置（可能含私有域名 / 仓库地址）
+.env
+docker/.env
+
 # 离线镜像包与压缩包
 *.tar
 *.tar.gz
