@@ -1,0 +1,33 @@
+# DSH Tavern 部署示例（FnOS / 群晖等 NAS，桥接网络 + 外部 lucky 反代）
+#
+# 使用前：
+#   1. 在 NAS 上 docker login 你的镜像仓库（私有仓库需要）；
+#   2. 复制本文件为 docker-compose.yml，按实际情况修改镜像、数据目录、端口与域名；
+#   3. docker compose up -d
+#
+# 数据目录必须与旧容器的挂载路径一致，才能复用已有数据并自动升级。
+#
+# 建议把个人配置写到同目录的 .env（已被 .gitignore 忽略），不要提交到仓库：
+#   DSH_TAVERN_IMAGE=your-registry.example.com/your-namespace/dsh-tavern:3.0.0
+#   DSH_TAVERN_DATA=/path/to/dsh-tavern
+#   DSH_TAVERN_TRUSTED_HOSTS=tavern.example.com
+#   DSH_TAVERN_HTTP_PORT=3080
+
+name: dsh-tavern
+
+services:
+  dsh-tavern:
+    image: ${DSH_TAVERN_IMAGE:-your-registry.example.com/your-namespace/dsh-tavern:3.0.0}
+    container_name: dsh-tavern
+    restart: unless-stopped
+    ports:
+      # 宿主机端口:容器内反向代理端口（对外始终用 3080）
+      - "${DSH_TAVERN_HTTP_PORT:-3080}:3080"
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      # 实际访问用的域名/地址（多个用逗号分隔），必须包含反代对外的域名
+      DSH_TAVERN_TRUSTED_HOSTS: ${DSH_TAVERN_TRUSTED_HOSTS:-tavern.example.com}
+    volumes:
+      # 容器内的程序、运行时与用户数据全部在这个目录
+      - ${DSH_TAVERN_DATA:-/path/to/dsh-tavern}:/home/tavern/.dsh-tavern

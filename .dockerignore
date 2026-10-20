@@ -1,0 +1,22 @@
+# 构建上下文是仓库根目录（docker/Dockerfile 需要根目录的 install.sh）。
+# 只保留 install.sh 与 docker/ 下的小文件，排除与镜像构建无关的大目录。
+.git
+.github
+android
+desktop-launcher
+docs
+examples
+packaging
+presets
+tavern-plugin
+tests
+
+# 本地运行产物 / 依赖
+data
+output
+node_modules
+
+# 离线镜像包与压缩包
+*.tar
+*.tar.gz
+*.zip

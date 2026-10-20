@@ -170,6 +170,20 @@ curl -fsSL 'https://raw.githubusercontent.com/flizzywine/dsh-tavern/main/install
 
 装好后用 `dsh-tavern start` 启动，按显示的地址在浏览器打开；`dsh-tavern stop` / `status` / `update` 停止、查看、更新。
 
+### Docker（NAS / 服务器）
+
+适合在 NAS 或长期开机的服务器上部署，支持外部反代与数据卷持久化。镜像只含运行环境，首次启动会自动安装 Tavern 到数据卷：
+
+```bash
+docker run -d --name dsh-tavern --restart unless-stopped \
+  -p 3080:3080 \
+  -e DSH_TAVERN_TRUSTED_HOSTS=<你的访问域名> \
+  -v /path/to/dsh-tavern:/home/tavern/.dsh-tavern \
+  your-registry.example.com/your-namespace/dsh-tavern:3.0.0
+```
+
+构建、推送、升级与 FnOS + lucky 反代说明见 [`docker/README.md`](docker/README.md)。
+
 ### 手机远程访问
 
 酒馆跑在电脑或服务器上，用手机浏览器也能玩。[详细说明 →](https://flizzywine.github.io/dsh-tavern/#a02--section-10)
