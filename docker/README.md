@@ -431,6 +431,54 @@ docker run -d --name dsh-tavern --restart unless-stopped \
 - 升级**完成后**想回退：恢复升级前的数据卷备份，并用旧镜像启动。
   （新版 DSH 会把会话/设置迁移到新格式，旧版本不保证能读回，因此以整卷备份为准。）
 
+### 6. 从旧目录备份恢复（CLI 容器）
+
+如果旧数据没有直接作为数据卷挂载，而是备份在卷内（例如
+`/home/tavern/.dsh-tavern/dshtavern.backup.1019`），可以用导入变量恢复：
+
+```yaml
+environment:
+  # 旧 DSH 主目录：包含 profile-data / profiles，不是 apps/dsh-tavern 或 data 子目录
+  DSH_TAVERN_IMPORT_HOME: /home/tavern/.dsh-tavern/dshtavern.backup.1019
+  # 目标卷已有卡片/聊天、确认要用备份覆盖时才设为 1（覆盖前会自动备份）
+  DSH_TAVERN_IMPORT_FORCE: "0"
+```
+
+也可以把备份放在卷外，再单独只读挂载：
+
+```yaml
+volumes:
+  - /vol1/1000/docker/dshtavern:/home/tavern/.dsh-tavern
+  - /vol1/1000/docker/dshtavern.backup.1019:/import:ro
+environment:
+  DSH_TAVERN_IMPORT_HOME: /import
+```
+
+入口脚本在安装/升级之后、启动核心之前执行 `import-user-data.mjs`：
+
+| 行为 | 说明 |
+|------|------|
+| 复制 | `profile-data/tavern`（卡片/聊天/会话/素材）、`attachments`、`.agent-presets`、`settings.yaml`、`.credentials.yaml`、`.openai-codex-auth.json` |
+| **不复制** | `profiles/tavern/package.json`、`profiles/tavern/cordis.patch.yml`（必须保持新安装的版本，旧配置覆盖会导致依赖错位） |
+| 防重复 | 成功后写 `<数据卷>/.dsh-tavern-import.json`；同一源再次启动会跳过 |
+| 防误覆盖 | 目标卷已有卡片/聊天时默认跳过；`DSH_TAVERN_IMPORT_FORCE=1` 才覆盖 |
+| 回滚 | 覆盖前把目标现有条目移到 `backups/docker-import-<时间戳>/`；复制失败自动移回 |
+
+验证：
+
+```bash
+docker logs dsh-tavern 2>&1 | grep -E "导入|import"
+docker exec dsh-tavern ls -la /home/tavern/.dsh-tavern/profile-data/tavern/data
+# 应能看到 cards/ chats/ index.json
+```
+
+> 导入的是**数据**，不会把旧版 `profiles/tavern` 的程序配置带过来；
+> 新版程序 + 旧数据才是正确组合。
+
+> 空间提示：导入是**复制**，源备份在卷内时会短暂占用约两份数据空间。
+> 确认卡片/聊天/会话都正常后，可删除旧的 `dshtavern.backup.1019` 和
+> `backups/docker-import-*` 释放空间。
+
 ---
 
 ## 八、环境变量参考
@@ -444,6 +492,9 @@ docker run -d --name dsh-tavern --restart unless-stopped \
 | `DSH_TAVERN_DISABLE_PROXY` | `0` | 设为 `1` 关闭反向代理 |
 | `DSH_TAVERN_FORCE_INSTALL` | `0` | 设为 `1` 强制重跑安装/升级 |
 | `DSH_TAVERN_SKIP_INSTALL` | `0` | 设为 `1` 跳过安装/升级（离线启动现有版本） |
+| `DSH_TAVERN_IMPORT_HOME` | 无 | 启动时从旧 DSH 主目录导入用户数据；源目录可以位于数据卷内部（如 `dshtavern.backup.1019`） |
+| `DSH_TAVERN_IMPORT_FORCE` | `0` | 目标卷已有卡片/聊天时仍用备份覆盖（覆盖前自动备份到 `backups/docker-import-*`） |
+| `DSH_TAVERN_DOCUMENTS_DIR` | `<数据卷>/documents` | DSH 默认工作区的 Documents 目录；放在卷内可跨容器重建保留 |
 | `DSH_TAVERN_NPM_REGISTRY` | `https://registry.npmmirror.com` | npm 镜像源 |
 | `DSH_TAVERN_GIT_URL` | 自动探测 | 源码 Git 地址（不设则自动选加速源） |
 | `DSH_TAVERN_ARCHIVE_URL` | 自动探测 | 备用源码压缩包 |
@@ -469,6 +520,9 @@ docker run -d --name dsh-tavern --restart unless-stopped \
 | `.pnpm-store/` | pnpm 缓存（加速后续更新） |
 | `source-cache/` | 源码增量缓存 |
 | `.dsh-tavern-image-revision` | 已完成的镜像修订号（自动升级判断用） |
+| `.dsh-tavern-import.json` | 旧数据导入记录（同一源不会重复导入） |
+| `documents/` | DSH 默认工作区所在 Documents 目录（持久化） |
+| `backups/docker-import-*` | 导入前的目标数据备份（确认无误后可删） |
 | `settings.yaml.imported` | 旧版 home 配置（0.2.1 升级后保留，可删） |
 
 **升级镜像不会丢失数据**；同一镜像重启会跳过安装、直接启动。
@@ -505,15 +559,38 @@ A：
 2. 外部反代改写了 Host 或保留了跨域 Origin → 反代需**保留原始 Host、移除 Origin**。
 
 **Q：页面能打开，但没有人物卡/聊天，并提示“无法创建默认工作区”？**
-A：这是 `/api` 被信任栅栏拒绝（HTTP 403）的典型表现：页面静态资源能加载，但所有
-RPC 与 WebSocket 都失败，客户端因此读不到数据、也无法创建工作区。排查：
-1. 在容器内自测（域名/端口换成你实际访问的）：
-   `docker exec dsh-tavern curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: tavern.example.com:58001' http://127.0.0.1:3080/api/`
-   返回 `401` 正常（未登录）；返回 `403` 即栅栏拒绝。
-2. 确认 `DSH_TAVERN_TRUSTED_HOSTS` 含实际访问域名（端口可省略，port-less 条目匹配任意端口），
-   且反代保留原始 Host、移除 Origin。
-3. 启动日志不应出现 `[patch] 未找到锚点`；首次安装显示 `已应用 3 处补丁`，
-   已装过补丁的卷显示 `已应用 1 处补丁` 或 `补丁已是最新`。
+A：有两个常见原因，先看现象区分：
+
+1. **`/api` 被信任栅栏拒绝（HTTP 403）**：页面静态资源能加载，但所有 RPC 与
+   WebSocket 都失败，客户端读不到数据、也无法创建工作区。排查：
+   - 在容器内自测（域名/端口换成你实际访问的）：
+     `docker exec dsh-tavern curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: tavern.example.com:58001' http://127.0.0.1:3080/api/`
+     返回 `401` 正常（未登录）；返回 `403` 即栅栏拒绝。
+   - 确认 `DSH_TAVERN_TRUSTED_HOSTS` 含实际访问域名（端口可省略，port-less 条目匹配任意端口），
+     且反代保留原始 Host、移除 Origin。
+   - 启动日志不应出现 `[patch] 未找到锚点`；首次安装显示 `已应用 3 处补丁`，
+     已装过补丁的卷显示 `已应用 1 处补丁` 或 `补丁已是最新`。
+
+2. **缺少 Documents 目录（0.2.1 的默认工作区）**：界面提示原文是
+   “无法创建默认工作区，请通过‘选择工作区’选择文件夹”（客户端
+   `defaultWorkspace.failed`）。DSH 0.2.1 首次使用会在
+   `<Documents>/deepseek-harness/default-workspace` 创建默认工作区，Linux 上通过
+   `xdg-user-dir DOCUMENTS` 查询。Alpine 默认既没有 `xdg-user-dirs`，也没有
+   `~/Documents`；查询失败就会提示该错误。本镜像已处理：
+   安装 `xdg-user-dirs`，启动时把 Documents 指到数据卷内并写入
+   `~/.config/user-dirs.dirs`。验证：
+   ```bash
+   docker exec dsh-tavern xdg-user-dir DOCUMENTS
+   # 应输出 /home/tavern/.dsh-tavern/documents，而不是空或 /home/tavern
+   ```
+   如果输出不对，检查 `DSH_TAVERN_DOCUMENTS_DIR` 是否指向可写目录。
+
+> 如果提示的是“无法创建 DSH Tavern Workspace”（酒馆插件自己的资源工作区），
+> 那是 `profile-data/tavern/data/resources` 不存在；本镜像启动时会预建该目录，
+> 无需手工处理。
+
+> 数据为空和 403 是两件事：403 排除后仍然没有卡片/聊天，说明当前挂载的卷里
+> 没有旧数据。按第七节第 6 小节用 `DSH_TAVERN_IMPORT_HOME` 从旧目录备份恢复。
 
 **Q：为什么必须用反向代理，不能直接映射 3081？**
 A：核心只监听回环，且拒绝通配绑定；反向代理负责对外并保留 Host。对外请始终用 3080。

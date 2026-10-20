@@ -2,9 +2,12 @@
 # DSH Tavern 容器入口脚本
 #   0. 以 root 启动时：按 PUID/PGID 修正数据目录属主，再降权到 tavern 运行
 #   1. 首次安装 / 镜像更新后自动升级到数据卷（暂存切换，失败自动回滚）
+#   1.5 可选：从 DSH_TAVERN_IMPORT_HOME 导入旧用户数据（CLI 版）
 #   2. 应用 musl 兼容修复（--expose-internals）
 #   3. 应用信任主机补丁（LAN 访问白名单）
 #   4. 移除 dsh-webui-auth 插件（认证由外部反代如 lucky 负责）
+#   4.4 预建 Tavern 资源工作区目录（宿主 workspaces.create 要求已存在）
+#   4.5 配置持久化的 Documents 目录（DSH 默认工作区）
 #   5. 启动核心服务（回环）与反向代理（对外）
 #
 # 版本升级机制：
@@ -95,6 +98,19 @@ if [ "${NEED_INSTALL}" = "1" ]; then
   fi
 fi
 
+# ── 1.5 旧数据导入（CLI 部署的 DSH_TAVERN_IMPORT_HOME） ────────────────────
+# 上游 importUserHome 只在桌面版执行，且拒绝源目录位于目标目录内部的布局；
+# Docker 用户常把备份放在数据卷里，因此用独立的只导入用户数据脚本：
+# 保留新安装的 profiles/tavern 配置，只恢复卡片/聊天/会话/附件/模型配置。
+if [ -n "${DSH_TAVERN_IMPORT_HOME:-}" ] && [ -f /opt/dsh-tavern/import-user-data.mjs ]; then
+  log "检测到 DSH_TAVERN_IMPORT_HOME=${DSH_TAVERN_IMPORT_HOME}，导入旧数据……"
+  if node /opt/dsh-tavern/import-user-data.mjs "${DSH_TAVERN_IMPORT_HOME}" "${DSH_ROOT}"; then
+    log "旧数据导入步骤完成。"
+  else
+    log "旧数据导入失败（容器继续启动；请检查上方日志和备份目录）。"
+  fi
+fi
+
 # ── 2. musl 兼容：dsh 需要 --expose-internals 才能解析 profile 插件 ────────
 # Alpine(musl) 缺少 node-addon-require-builtin 的原生绑定，导致加载器
 # loader.internal 不可用；改用 --expose-internals 走 Node 内置解析路径。
@@ -134,6 +150,24 @@ if [ "${DSH_TAVERN_WEBUI_LOGIN:-0}" != "1" ] && [ -f "${RUNTIME_BIN}" ]; then
     "${RUNTIME_BIN}" plugin --profile tavern remove dsh-webui-auth || true
   fi
 fi
+
+# ── 4.4 Tavern 资源工作区目录 ──────────────────────────────────────────────
+# 插件把 dataRoot/resources 交给宿主 workspaces.create()；宿主只接受已存在的
+# 目录（realpath 失败会拒绝），而安装器不会预先创建它。这里先建好，避免
+# “开始游戏”时提示无法创建 DSH Tavern Workspace。
+mkdir -p "${DSH_ROOT}/profile-data/tavern/data/resources"
+
+# ── 4.5 DSH 默认工作区需要 Documents 目录（Alpine 默认没有） ───────────────
+# DSH 0.2.1 首次使用会在 <Documents>/deepseek-harness/default-workspace 创建
+# 默认工作区（@deepseek-ai/dsh-api-workspace-controller）。Linux 上它通过
+# xdg-user-dir DOCUMENTS 查询；Alpine 默认既没有 xdg-user-dirs，也没有
+# ~/Documents，查询失败会让界面提示「无法创建默认工作区」。
+# 这里把 Documents 指到数据卷内的持久目录，容器重建后工作区仍在。
+DOCUMENTS_DIR="${DSH_TAVERN_DOCUMENTS_DIR:-${DSH_ROOT}/documents}"
+mkdir -p "${DOCUMENTS_DIR}" "${HOME}/.config"
+printf 'XDG_DOCUMENTS_DIR="%s"\n' "${DOCUMENTS_DIR}" > "${HOME}/.config/user-dirs.dirs"
+export XDG_CONFIG_HOME="${HOME}/.config"
+log "Documents 目录：${DOCUMENTS_DIR}（默认工作区将创建在 ${DOCUMENTS_DIR}/deepseek-harness/default-workspace）"
 
 # ── 5. 启动核心服务（回环监听） ────────────────────────────────────────────
 CORE_PORT="${DSH_TAVERN_PORT:-3081}"

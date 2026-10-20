@@ -29,6 +29,7 @@ RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories
       procps \
       lsof \
       su-exec \
+      xdg-user-dirs \
  && npm config set registry https://registry.npmmirror.com \
  && npm install -g pnpm@11.25.0 \
  && npm cache clean --force
@@ -45,6 +46,7 @@ RUN deluser node 2>/dev/null || true \
 COPY install.sh /opt/dsh-tavern/install.sh
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/apply-launcher-patch.mjs /opt/dsh-tavern/apply-launcher-patch.mjs
+COPY docker/import-user-data.mjs /opt/dsh-tavern/import-user-data.mjs
 COPY docker/detect-ips.mjs /opt/dsh-tavern/detect-ips.mjs
 COPY docker/reverse-proxy.mjs /opt/dsh-tavern/reverse-proxy.mjs
 COPY docker/resolve-source.mjs /opt/dsh-tavern/resolve-source.mjs

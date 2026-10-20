@@ -28,6 +28,10 @@ services:
       PGID: "1000"
       # 实际访问用的域名/地址（多个用逗号分隔），必须包含反代对外的域名
       DSH_TAVERN_TRUSTED_HOSTS: ${DSH_TAVERN_TRUSTED_HOSTS:-tavern.example.com}
+      # 旧数据恢复（可选）：指向卷内的旧 DSH 主目录备份；恢复完成后可注释掉
+      # DSH_TAVERN_IMPORT_HOME: /home/tavern/.dsh-tavern/dshtavern.backup.1019
+      # 目标卷已有卡片/聊天、确认要用备份覆盖时才设为 1
+      # DSH_TAVERN_IMPORT_FORCE: "0"
     volumes:
       # 容器内的程序、运行时与用户数据全部在这个目录
       - ${DSH_TAVERN_DATA:-/path/to/dsh-tavern}:/home/tavern/.dsh-tavern
