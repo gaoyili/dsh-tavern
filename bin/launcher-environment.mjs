@@ -164,7 +164,9 @@ export function findDshCommand(host = RUNTIME_HOST) {
 // installed elsewhere, so installs run this exact bootstrap instead.
 export function pinnedDesktopDsh(host, env = process.env, platform = process.platform) {
   if (host !== 'desktop') return null
-  const executable = env.DSH_DESKTOP_NODE_EXECUTABLE || env.DSH_DESKTOP_APP_EXECUTABLE
+  // DSH_DESKTOP_DSH_RUNNER: NEXT runs its bundled Node for tools but must run the DSH entry
+  // (inside app.asar) under its Electron; older installs fall back to the shared runner.
+  const executable = env.DSH_DESKTOP_DSH_RUNNER || env.DSH_DESKTOP_NODE_EXECUTABLE || env.DSH_DESKTOP_APP_EXECUTABLE
   const bootstrap = env.DSH_DESKTOP_DSH_BOOTSTRAP
   if (!executable || !bootstrap || !existsSync(executable) || (!existsSync(bootstrap) && !bootstrap.includes('app.asar' + path.sep))) return null
   return { executable, bootstrap }

@@ -174,15 +174,30 @@ test('手机按标题行宽折算槽位：放不下就留一格给 ⋮', () => {
   assert.equal(capacity(1, 300, { limit: 3 }), 3)
 })
 
-test('手机顶栏的布局约束：角落按钮留座、宿主动作组可收缩、窄屏让位', () => {
+test('手机顶栏的布局约束：角落按钮留座、宿主动作组保持自然宽度', () => {
   // 预算变量写在标题行上，JS 读它折算槽位。
   assert.match(css, /\[class\*="_titleRow"\] \{\s*--dsh-tavern-header-fixed: 196px;/)
-  assert.match(css, /\[class\*="_headerActions"\] \{\s*flex: 0 1 auto; min-width: 40px;/)
-  // 320px 级窄屏隐藏宿主的子智能体触发器，并降低固定开销。
-  assert.match(css, /@media \(max-width: 429px\) \{[\s\S]*?--dsh-tavern-header-fixed: 156px;/)
+  // 0.2.x 的 headerActions 是 display:contents 插槽，侧栏开关/文件/全屏都在里面；
+  // 容器压窄会让固定尺寸按钮互相覆盖，因此保持自然宽度，让标题区收缩。
+  assert.match(css, /\[class\*="_headerActions"\] \{\s*flex: none; min-width: 0; gap: 0;/)
+  assert.doesNotMatch(css, /--dsh-tavern-header-fixed: 156px;/)
+  // dsh-web-mobile 隐藏 titleRow 的 corner 时，酒馆要放回宿主右侧栏按钮，并隐藏重复的文件按钮。
+  assert.match(css, /\[data-mobile-nav="frame"\][\s\S]{0,240}\[data-conversation-header-corner\][\s\S]{0,80}display: flex !important;/)
+  assert.match(css, /\[data-mobile-nav="frame"\][\s\S]{0,300}\[data-mobile-nav="files"\]\s*\{\s*display: none !important;/)
   // 手机判定与上限要暴露给夹具。
   assert.match(client, /function useTavernMobileHeader\(\)/)
   assert.match(client, /"data-tavern-header-limit": mobile \? mobileLimit : ""/)
   // ⋮ 在手机上竖排三点。
   assert.match(client, /mobile \? "M12 5h\.01M12 12h\.01M12 19h\.01"/)
+})
+
+test('宿主隐藏 utilities 时入口仍然在：加载即标记 shell，兜底规则不依赖 body 类', () => {
+  // dsh-web-mobile 在 `@media (max-width:767px) and (pointer:coarse)` 里把
+  // `header:has(_headerLeading) [class*=_headerUtilities]` 设成 display:none !important
+  // （特异性 (0,4,1)）。酒馆的快捷入口全在这个单元格里，竖屏就整排消失、横屏又回来。
+  // 两条都要：body 类一经缺席，所有 `body.dsh-tavern-shell-active …` 覆盖全部失效。
+  assert.match(client, /function markTavernShellActive\(\)/)
+  assert.match(client, /markTavernShellActive\(\);/)
+  assert.match(css, /header:has\(\[class\*="_headerLeading"\]\) \[class\*="_headerUtilities"\]:has\(\.dsh-tavern-header-items\)/)
+  assert.match(css, /display: flex !important; flex: 0 1 auto !important; min-width: 0 !important;/)
 })

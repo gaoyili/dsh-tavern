@@ -529,7 +529,7 @@ export function createApplicationUpdater(options) {
       if (manifest.dsh?.profile?.bundles?.includes('dsh-profile-tavern')) {
         return {
           phase: 'package-managed', host: await host(), ...await localIdentity(),
-          updateCommand: 'dsh plugin --profile tavern add github:flizzywine/dsh-tavern',
+          updateCommand: 'dsh plugin --profile tavern add @deepseek-ai/dsh-web-app github:flizzywine/dsh-tavern',
         }
       }
     } catch (error) {

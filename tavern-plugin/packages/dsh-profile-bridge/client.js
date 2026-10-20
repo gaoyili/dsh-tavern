@@ -129,7 +129,7 @@ window.__ModuleLoader__.load({
       const tavernReady = (status?.profiles ?? []).some((profile) => profile.name === 'tavern' && (profile.bundles ?? []).includes('dsh-profile-bridge') && profile.hasNodeModules)
       // Back to the original needs its backup; into the tavern needs a tavern setup that can come back.
       const blocked = side === 'original' ? (tavernReady ? null : t('noTavern'))
-        : (status?.backups ?? []).length > 0 ? null : t('noOriginal')
+        : (status?.backups ?? []).length > 0 || status?.nextProfiles ? null : t('noOriginal')
       const target = side === 'original' ? 'tavern' : null
 
       const [shortcut, setShortcut] = React.useState(null)

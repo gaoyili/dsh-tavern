@@ -96,7 +96,10 @@ export PATH="${PNPM_ROOT}/bin:${PATH}"
 export pnpm_config_update_notifier=false
 # All dependency and Profile installs below use this exact executable.
 pnpm() {
-  "${PNPM_COMMAND}" --config.update-notifier=false "$@"
+  # 慢速移动网络下载大包会撞上 pnpm 单请求 60 秒默认超时（日志 error (23)）；
+  # 提高到 10 分钟，避免一次超时就丢掉整轮安装。可用同名环境变量覆盖。
+  "${PNPM_COMMAND}" --config.update-notifier=false \
+    --config.fetchTimeout="${pnpm_config_fetch_timeout:-600000}" "$@"
 }
 # Android 的 proot 会把硬链接模拟成符号链接，pnpm 默认导入方式可能因此
 # 生成无法进行相对 require 的包目录。DSHA 中的所有后续安装也必须沿用复制模式。

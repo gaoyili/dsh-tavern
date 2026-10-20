@@ -2,12 +2,15 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { copyTreeSync } from './portable-fs.mjs'
+import { copyTreeSync, removeTreeSync } from './portable-fs.mjs'
+import { switchProfile } from '../tavern-plugin/packages/dsh-profile-bridge/lib/helper.mjs'
 import { assertDesktopStopped } from './import-user-home.mjs'
+import { isDesktopNext, readNextProfile, selectNextProfile } from '../tavern-plugin/packages/dsh-profile-bridge/lib/next.mjs'
 
 const present = file => { try { lstatSync(file); return true } catch (e) { if (e.code === 'ENOENT') return false; throw e } }
 const read = dir => JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'))
 const isTavern = doc => doc?.dsh?.profile?.bundles?.includes('dsh-tavern-plugin') || doc?.name === 'dsh-profile-tavern'
+const hasBridge = dir => { try { return read(dir)?.dsh?.profile?.bundles?.includes('dsh-profile-bridge') === true } catch { return false } }
 const save = (file, value) => { writeFileSync(file + '.tmp', JSON.stringify(value, null, 2)); renameSync(file + '.tmp', file) }
 function originalProfile(home, live, linked) {
   if (!linked && !isTavern(read(live))) return { directory: live }
@@ -39,6 +42,27 @@ function installBridge(dir, sourceRoot) {
   doc.dsh.profile.bundles = [...new Set([...doc.dsh.profile.bundles, 'dsh-profile-bridge'])]
   save(path.join(dir, 'package.json'), doc)
 }
+const sameTree = (a, b) => {
+  try {
+    const names = dir => readdirSync(dir).filter(n => !n.includes('.previous-')).sort()
+    const left = names(a), right = names(b)
+    return left.length === right.length && left.every((n, i) => n === right[i] && (lstatSync(path.join(a, n)).isDirectory()
+      ? sameTree(path.join(a, n), path.join(b, n)) : readFileSync(path.join(a, n)).equals(readFileSync(path.join(b, n)))))
+  } catch { return false }
+}
+// The original profile's switcher must know NEXT, or switching from it would link profiles/desktop again.
+// The original is idle while the tavern runs or installs, so it is refreshed in place.
+function refreshBridge(dir, sourceRoot) {
+  const source = path.join(sourceRoot, 'tavern-plugin/packages/dsh-profile-bridge')
+  if (['vendor', 'node_modules'].every(parent => sameTree(source, path.join(dir, parent, 'dsh-profile-bridge')))) return
+  const previous = ['vendor', 'node_modules'].map(parent => path.join(dir, parent, 'dsh-profile-bridge'))
+  const before = new Set(previous.flatMap(file => present(path.dirname(file)) ? readdirSync(path.dirname(file)).map(n => path.join(path.dirname(file), n)) : []))
+  installBridge(dir, sourceRoot)
+  for (const file of previous) for (const n of readdirSync(path.dirname(file))) {
+    const old = path.join(path.dirname(file), n)
+    if (n.startsWith('dsh-profile-bridge.previous-') && !before.has(old)) removeTreeSync(old)
+  }
+}
 function recover(journalFile, journal) {
   for (const action of [...journal.actions].reverse()) {
     if (action.reverted) continue
@@ -52,10 +76,24 @@ function recover(journalFile, journal) {
 }
 // Returns null when desktop already links to tavern: an update then rewrites the tavern profile in place,
 // as in-app updates do while the desktop is running. Only the first bridging needs the desktop closed.
-export function beginDesktopProfileInstallation({ home, sourceRoot, checkStopped = () => assertDesktopStopped([home], { requireGuiClosed: true }) }) {
+// DSH NEXT (2.0.19+) selects its own Profile and refuses a linked profiles/desktop: there the original
+// stays a real directory (with the bridge, so it can switch into the tavern) and the tavern is selected.
+export function beginDesktopProfileInstallation({ home, sourceRoot, checkStopped = () => assertDesktopStopped([home], { requireGuiClosed: true }), next = isDesktopNext(process.env.DSH_DESKTOP_APP_EXECUTABLE) }) {
   const profiles = path.join(home, 'profiles'), live = path.join(profiles, 'desktop'), tavern = path.join(profiles, 'tavern')
   const interrupted = (() => { try { return JSON.parse(readFileSync(path.join(home, 'profile-bridge', 'install.json'), 'utf8')).phase === 'preparing' } catch { return false } })()
-  if (!interrupted && present(live) && lstatSync(live).isSymbolicLink() && present(tavern) && realpathSync(live) === realpathSync(tavern)) return null
+  const linkedToTavern = present(live) && lstatSync(live).isSymbolicLink() && present(tavern) && realpathSync(live) === realpathSync(tavern)
+  if (!interrupted && next && present(tavern) && (linkedToTavern || (present(live) && hasBridge(live)))) {
+    // Already bridged (by NEXT, or by the official app or NEXT 2.0.18 linking desktop): undo the link NEXT
+    // refuses, bring the original's switcher up to date, and select the tavern.
+    let restored = !linkedToTavern
+    if (!restored) try { switchProfile({ mode: 'unlink', profilesRoot: profiles, liveDir: live, stamp: 'next-' + Date.now() }); restored = true } catch {}
+    if (restored) {
+      refreshBridge(live, sourceRoot)
+      if (readNextProfile(home) !== 'tavern') selectNextProfile(home, 'tavern')
+      return null
+    }
+  }
+  if (!interrupted && !next && linkedToTavern) return null
   checkStopped()
   const state = path.join(home, 'profile-bridge')
   mkdirSync(state, { recursive: true })
@@ -97,6 +135,13 @@ export function beginDesktopProfileInstallation({ home, sourceRoot, checkStopped
       desktopStage,
       finish() {
         checkStopped()
+        if (next) {
+          // The bridged original replaces profiles/desktop in place; NEXT then starts the tavern by selection.
+          move(live, path.join(backup, 'previous-desktop'))
+          move(desktopStage, live)
+          selectNextProfile(home, 'tavern')
+          return
+        }
         // Keep the original profile available for the settings page's restore action.
         const originalDir = path.join(profiles, 'desktop.fresh-' + stamp)
         move(desktopStage, originalDir)

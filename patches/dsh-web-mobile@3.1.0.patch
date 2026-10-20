@@ -1,7 +1,30 @@
 diff --git a/lib/client.js b/lib/client.js
 --- a/lib/client.js
 +++ b/lib/client.js
-@@ -14832,7 +14832,9 @@
+@@ -8048,6 +8048,22 @@
+     const panel = document.querySelector('[data-sidebar-right-panel]');
+     if (panel === null)
+         return false;
++    // DSH 0.2 keeps the fullscreen panel MOUNTED at the viewport origin even
++    // while closed (a `pointer-events: none` overlay; Tavern's visual-viewport
++    // rules pin it to left:0 / width:100% as well), so the 0.1.5 rect heuristic
++    // below answers "open" forever: classifyFilesSwipe refuses every leftward
++    // stroke while it believes the panel is open, and the right sidebar could
++    // not be swiped open at all (issue #296). Read the state the host paints.
++    if (panel.hasAttribute('data-sidebar-right-open'))
++        return true;
++    // The host's closed rule hides the dock content (`visibility: hidden` +
++    // translated out of the slot) and its open rule reveals it, so whichever
++    // dockkit cell exists carries the same signal the host's CSS keys off.
++    const dock = panel.querySelector('[data-dockkit-host], [data-dockkit-empty]');
++    if (dock !== null) {
++        const dockStyle = getComputedStyle(dock);
++        return dockStyle.visibility !== 'hidden' && dockStyle.display !== 'none';
++    }
+     const cs = getComputedStyle(panel);
+     if (cs.visibility === 'hidden' || cs.display === 'none')
+         return false;
+@@ -14832,7 +14848,9 @@
      (0, panel_exit_ts_1.installPanelRowExit)(ctx, panelExit.exit);
      // Session deletion, injected into each session row's ⋯ menu (beside
      // rename / fork / archive) with a confirm dialog. Mobile-only.

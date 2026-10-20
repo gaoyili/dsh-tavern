@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, appendFileSync, unlinkSync, rmdirSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, appendFileSync, unlinkSync, rmdirSync, rmSync, lstatSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { waitForExit, switchProfile, relaunchApp } from './helper.mjs'
+import { selectNextProfile } from './next.mjs'
 const job = process.argv[2]
 // Register before parsing the request: even a corrupt job then leaves a pid the
 // next switch can use to tell this helper is gone.
@@ -12,7 +13,15 @@ try {
   log('已排队，等待官方桌面正常退出；不会强制结束进程。')
   await waitForExit(request.pids)
   exited = true
-  log(JSON.stringify(switchProfile(request)))
+  if (request.next) {
+    // DSH NEXT refuses a linked profiles/desktop. Back to the original, undo a link the
+    // official app's switch may have left (both apps can share this home), then select it.
+    const desktop = join(request.profilesRoot, 'desktop')
+    const linked = (() => { try { return lstatSync(desktop).isSymbolicLink() } catch { return false } })()
+    if (request.mode === 'unlink' && linked) log(JSON.stringify(switchProfile({ ...request, liveDir: desktop })))
+    selectNextProfile(request.home, request.mode === 'link' ? request.targetName : 'desktop')
+    log(JSON.stringify({ changed: true, next: request.mode === 'link' ? request.targetName : 'desktop' }))
+  } else log(JSON.stringify(switchProfile(request)))
   log('切换完成。')
 } catch (error) {
   log('ERROR: ' + error.message)

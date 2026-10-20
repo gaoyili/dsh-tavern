@@ -12,6 +12,24 @@ window.__ModuleLoader__.load({
 		// @include stylesheet.js
 		if (typeof document !== "undefined") installTavernStylesheet(document, __TAVERN_BUNDLED_CSS__);
 
+		// `dsh-tavern-shell-active` gates every Tavern rule that touches host chrome.
+		// It used to be added only when the left sidebar mounted. On a phone that
+		// sidebar is a drawer, so the class never appeared: the header cell fell back
+		// to the host's `display: none` and the whole top bar vanished, while the
+		// host's own corner buttons stayed. Mark the document as soon as the Tavern
+		// client loads, independently of which panels are mounted.
+		function markTavernShellActive() {
+			if (typeof document === "undefined") return;
+			const mark = function () {
+				if (document.body && !document.body.classList.contains("dsh-tavern-shell-active")) {
+					document.body.classList.add("dsh-tavern-shell-active");
+				}
+			};
+			if (document.body) mark();
+			else document.addEventListener("DOMContentLoaded", mark, { once: true });
+		}
+		markTavernShellActive();
+
 
 		function isPlayMode(mode) {
 			return mode === "story" || mode === "script";

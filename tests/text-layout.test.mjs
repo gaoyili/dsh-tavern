@@ -72,3 +72,76 @@ test('外观行：字号读写 DSH 的字号设置，并跟随通用设置的改
   assert.equal(values()[0], '12px', '通用设置里改字号，这里跟着变')
   await act(async () => { root.unmount() })
 })
+
+test('DSH 0.2.0 宿主：字号是单个数值，setFontSize(px) 也能调节；超过宿主上限时夹到上限而不是报错', async () => {
+  const { dom, React, feature } = await setup()
+  const { createRoot } = await import('react-dom/client')
+  const { act } = await import('react')
+  let snapshot = { fontSize: 17 }
+  const changes = new Set()
+  const writes = []
+  const theme = {
+    getTheme: () => snapshot,
+    setFontSize: (px) => {
+      if (!Number.isInteger(px) || px < 10 || px > 22) throw new Error(`font size ${px} is outside 10..22`)
+      writes.push(px)
+      snapshot = { fontSize: px }
+      changes.forEach(fn => fn(snapshot))
+    }
+  }
+  let registered, Row
+  const ctx = {
+    theme, on: (_event, fn) => { changes.add(fn); return () => changes.delete(fn) },
+    slots: { inject: (_name, run) => run(), register: (meta, component) => { registered = meta; Row = component; return () => {} } }
+  }
+  feature.register(ctx)
+  const root = createRoot(dom.window.document.getElementById('root'))
+  await act(async () => { root.render(React.createElement(Row, registered.inject())) })
+  const values = () => [...dom.window.document.querySelectorAll('.dsh-tavern-text-layout-value')].map(node => node.textContent)
+  assert.equal(values()[0], '17px', '0.2.0 的 snapshot 只有 fontSize，也要读到')
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
+  const size = dom.window.document.querySelector('.dsh-tavern-text-layout input[type=range]')
+  await act(async () => { setter.call(size, '20'); size.dispatchEvent(new dom.window.Event('input', { bubbles: true })) })
+  assert.deepEqual(writes, [20], '按 0.2.0 的 setFontSize(px) 写入')
+  await act(async () => { setter.call(size, '30'); size.dispatchEvent(new dom.window.Event('input', { bubbles: true })) })
+  assert.deepEqual(writes, [20, 22], '超过 0.2.0 的 22px 上限时改用上限值')
+  assert.equal(size.max, '22', '滑杆跟着宿主上限收窄')
+  assert.equal(values()[0], '22px')
+  assert.equal(dom.window.document.querySelector('.dsh-tavern-settings-error'), null, '不把宿主上限报错摆在设置页上')
+  await act(async () => { setter.call(size, '12'); size.dispatchEvent(new dom.window.Event('input', { bubbles: true })) })
+  assert.equal(writes.at(-1), 12, '收窄后仍能正常调节')
+  await act(async () => { root.unmount() })
+})
+
+test('DSH 0.2.1 未打字号补丁的宿主（上限 22）同样收窄滑杆，不显示报错', async () => {
+  const { dom, React, feature } = await setup()
+  const { createRoot } = await import('react-dom/client')
+  const { act } = await import('react')
+  let snapshot = { fontSizes: { text: 14 } }
+  const changes = new Set()
+  const writes = []
+  const theme = {
+    getTheme: () => snapshot,
+    setFontSize: (role, px) => {
+      if (!Number.isInteger(px) || px < 10 || px > 22) throw new Error(`${role} font size ${px} is outside 10..22`)
+      writes.push([role, px])
+      snapshot = { fontSizes: { text: px } }
+      changes.forEach(fn => fn(snapshot))
+    }
+  }
+  let registered, Row
+  const ctx = {
+    theme, on: (_event, fn) => { changes.add(fn); return () => changes.delete(fn) },
+    slots: { inject: (_name, run) => run(), register: (meta, component) => { registered = meta; Row = component; return () => {} } }
+  }
+  feature.register(ctx)
+  const root = createRoot(dom.window.document.getElementById('root'))
+  await act(async () => { root.render(React.createElement(Row, registered.inject())) })
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
+  const size = dom.window.document.querySelector('.dsh-tavern-text-layout input[type=range]')
+  await act(async () => { setter.call(size, '26'); size.dispatchEvent(new dom.window.Event('input', { bubbles: true })) })
+  assert.deepEqual(writes, [['text', 22]])
+  assert.equal(size.max, '22')
+  assert.equal(dom.window.document.querySelector('.dsh-tavern-settings-error'), null)
+  await act(async () => { root.unmount() })
+})

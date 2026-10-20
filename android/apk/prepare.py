@@ -3,12 +3,18 @@
 import argparse
 import hashlib
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import zipfile
 
-COMMIT = 'dca04aed7c1a1468827a953bfd6295fc3ca44170'
-APK_SHA256 = '85cb7c7213681ced654788f940b16313b3b5e2b662add87432ede95446a30658'
+# DSHA v0.2.0-rc2：轻量 tag，tag 本身即提交；内置 DSH 0.2.0-rc.2。
+COMMIT = '8362bba747fcf84c19e436c3dbb594a0fc388a67'
+APK_SHA256 = '1fedf883d431af658d89c28b86d85974cc1d11b74e0c5d46ef3d3cf8650b1961'
+# 与上游 v2.1 APK 并存：签名不同，无法覆盖安装，也不该让用户卸载旧包丢数据。
+APPLICATION_ID = 'io.github.flizzywine.dshtavern.standalone'
+VERSION_CODE = 30000
+VERSION_NAME = '3.0.0'
 HERE = Path(__file__).resolve().parent
 
 
@@ -23,7 +29,13 @@ def prepare(source, apk, destination):
     actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != COMMIT:
         raise ValueError(f'DSHA 源码版本不匹配：{actual}')
-    if subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain'], text=True).strip():
+    # 上游提交里的 config/xml/json 带 CRLF，`* text=auto` 在 Linux 上会把它们显示成改动；
+    # 只接受换行差异，真正的本地修改仍会拒绝构建。
+    dirty = subprocess.run(['git', '-C', str(source), 'diff', '--quiet', '--ignore-cr-at-eol'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+    staged = subprocess.run(['git', '-C', str(source), 'diff', '--cached', '--quiet'],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+    if dirty != 0 or staged != 0:
         raise ValueError('DSHA 源码有本地修改，请使用干净的锁定提交')
     if hashlib.sha256(apk.read_bytes()).hexdigest() != APK_SHA256:
         raise ValueError('官方 APK 摘要不匹配')
@@ -61,67 +73,178 @@ def prepare(source, apk, destination):
     tests.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(HERE / 'TavernWebProcessTest.java', tests / 'TavernWebProcessTest.java')
     gradle = app / 'build.gradle'
-    replace(gradle, 'applicationId "com.dsh.client"', 'applicationId "io.github.flizzywine.dshtavern"')
-    replace(gradle, 'main.assets.setSrcDirs([layout.buildDirectory.dir("generated/standardAssets")])', 'main.assets.setSrcDirs(["src/tavern/assets"])')
-    replace(gradle, 'tasks.named("preBuild").configure { dependsOn(prepareStandardAssets) }', '// 使用经过固定摘要验证的官方 APK 资产。')
+    replace(gradle, 'applicationId "com.dsh.client"', f'applicationId "{APPLICATION_ID}"')
+    # 版本号独立于 DSHA：major*10000 + minor*100 + patch，后续发布只增不减。
+    replace(gradle, '''        versionCode 170
+        // DSHA 修订号 + 固定的北京时间戳 + 内置 DSH 版本；同一交付重建不变。
+        versionName "0.2.21-20261009.0750-dsh0.2.0-rc.2"''',
+            f'''        versionCode {VERSION_CODE}
+        versionName "{VERSION_NAME}"''')
+    replace(gradle,
+            '''        main.assets.setSrcDirs([layout.buildDirectory.dir("generated/standardAssets").get().asFile,
+                layout.buildDirectory.dir("generated/recoveryAssets").get().asFile])''',
+            '        // 直接复用官方 APK 里已经生成并验证过的运行环境资产。\n'
+            '        main.assets.setSrcDirs(["src/tavern/assets"])')
+    replace(gradle, 'tasks.named("preBuild").configure { dependsOn(prepareStandardAssets, prepareRecoveryAssets) }',
+            '''tasks.named("preBuild").configure { }
+// 运行环境资产来自官方 APK，跳过从源码重建及其校验任务（否则会重算并与补丁后的源码冲突）。
+tasks.configureEach {
+    if (name in ['prepareStandardAssets', 'prepareRecoveryAssets', 'prepareBackupAssets',
+                 'prepareRuntimeDescriptor', 'verifyRuntimeDescriptorInputs'])
+        enabled = false
+}''')
     for resource in (app / 'src/main/res').glob('values*/strings.xml'):
-        import re
         resource.write_text(re.sub(r'(<string name="app_name"[^>]*>).*?(</string>)', r'\1DSH Tavern\2', resource.read_text()))
-    for layout in (app / 'src/main/res').glob('layout*/welcome_page1.xml'):
-        layout.write_text(layout.read_text().replace('android:text="DSHA"', 'android:text="DSH Tavern"'))
-    welcome = app / 'src/main/res/layout/welcome_page1.xml'
-    replace(welcome, 'android:text="@string/ui_m0035"', 'android:text="@string/tavern_first_install"')
-    for language, message in {
-        'values': '内置 DSHA 运行环境。首次打开将联网下载最新版酒馆并安装依赖，请保持网络连接。无需输入安装命令。',
-        'values-en': 'Includes the DSHA runtime. First launch downloads the latest Tavern and installs its dependencies. Keep your internet connection active. No installation commands required.',
-    }.items():
-        (app / f'src/main/res/{language}/tavern_strings.xml').write_text(
-            '<?xml version="1.0" encoding="utf-8"?><resources><string name="tavern_first_install">'
-            + message + '</string></resources>\n')
-    controller = java / 'core/HarnessController.java'
-    replace(controller, '            String startupProfile = "web";', '''            if (!safeMode) {
-                TavernBootstrap.ensure(ctx, boot, () -> !lifecycle.isCurrent(generation), message -> {
-                    if (message.startsWith("首次安装：")) setWebStage(generation, "下载并安装最新版酒馆");
-                    reportStatus(generation, onStatus, message);
-                });
-            }
-            String startupProfile = "tavern";''')
-    replace(controller, 'export DSH_HOME=/root/.dsh && ',
-            'export DSH_HOME=/root/.dsh DSH_TAVERN_RUNTIME_HOST=android DSH_TAVERN_ANDROID_STANDALONE=1 pnpm_config_update_notifier=false && ')
+    # 启动页固定运行 tavern profile；普通 web profile 在本 APK 中不存在。
+    pipeline = java / 'core/StartupPipeline.java'
+    replace(pipeline, '    String safeProfile() throws IOException;',
+            '''    String safeProfile() throws IOException;
+
+    /** 独立 APK：确保内置酒馆已安装；普通启动固定运行 tavern profile。 */
+    void installTavern() throws Exception;''')
+    replace(pipeline,
+            '''    if (!actions.current()) return null;
+    String startupProfile = "web";
+    if (!safeMode) actions.beforeLaunch(diagnostics.recordId());''',
+            '''    if (!actions.current()) return null;
+    String startupProfile = "web";
+    if (!safeMode) {
+      actions.beforeLaunch(diagnostics.recordId());
+      actions.installTavern();
+      startupProfile = "tavern";
+    }''')
+    replace(java / 'core/StartupEnvironmentActions.java',
+            '  public String safeProfile() throws IOException {',
+            '''  public void installTavern() throws Exception {
+    TavernBootstrap.ensure(
+        owner.context(),
+        owner.proot(),
+        () -> !current(),
+        message -> {
+          if (message.startsWith("首次安装："))
+            stage.accept(com.deepseekharness.app.util.UiText.text("下载并安装最新版酒馆"));
+          status.accept(message);
+        });
+  }
+
+  public String safeProfile() throws IOException {''')
+    # 只给容器内的 dsh 加酒馆标识，不改变启动命令前缀（WebProcSel 依赖它识别受管 shell）。
+    replace(java / 'util/WebLaunchCommand.java',
+            '''        + generation
+        + " && cd /root && rm -f "''',
+            '''        + generation
+        + " && export DSH_TAVERN_RUNTIME_HOST=android DSH_TAVERN_ANDROID_STANDALONE=1"
+        + " && export pnpm_config_update_notifier=false"
+        + " && cd /root && rm -f "''')
     replace(java / 'util/WebProcSel.java',
-            'args[index + 1].matches("dsha-recovery-[0-9a-f]{16}")',
-            '(args[index + 1].equals("tavern") || args[index + 1].matches("dsha-recovery-[0-9a-f]{16}"))')
+            '"(?:dsha-recovery-[0-9a-f]{16}|dsha-emergency-[0-9a-f]{32})"));',
+            '"(?:tavern|dsha-recovery-[0-9a-f]{16}|dsha-emergency-[0-9a-f]{32})"));')
+    replace(java / 'util/WebProcSel.java',
+            '''        && (command.contains("exec dsh web --no-open --host 127.0.0.1 --port ")
+            || command.contains("exec dsh --profile 'dsha-recovery-"));''',
+            '''        && (command.contains("exec dsh web --no-open --host 127.0.0.1 --port ")
+            || command.contains("exec dsh --profile 'tavern' --no-open --host 127.0.0.1 --port ")
+            || command.contains("exec dsh --profile 'dsha-recovery-"));''')
     launch = java / 'ui/LaunchFragment.java'
-    replace(java / 'ui/WebPreviewActivity.java',
-            '            WebView view = new WebView(new android.content.MutableContextWrapper(this));',
-            '''            if (com.deepseekharness.app.BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true);
-            WebView view = new WebView(new android.content.MutableContextWrapper(this));''')
-    replace(launch, '            String localUrl = webEntryUrl();', '''            if (ready && !trace.safe && isResumed() && !enteringWeb) {
-                android.content.SharedPreferences prefs = requireContext().getSharedPreferences("tavern-apk", 0);
-                if (!prefs.getBoolean("entered", false)) {
-                    prefs.edit().putBoolean("entered", true).apply();
-                    ui.post(this::enterWeb);
-                }
-            }
-            String localUrl = webEntryUrl();''')
+    replace(launch, '  private boolean pendingAutoEnter;',
+            '''  private boolean pendingAutoEnter;
+
+  /** 独立 APK 首次就绪时自动进入酒馆；进入后写入偏好，之后由用户手动点「进入」。 */
+  private boolean autoEnterOnReady;''')
+    replace(launch,
+            '''    if (getArguments() != null && getArguments().getBoolean(ARG_OPEN_WEB, false)) {
+      getArguments().remove(ARG_OPEN_WEB);
+      pendingAutoEnter = true;
+    }''',
+            '''    if (getArguments() != null && getArguments().getBoolean(ARG_OPEN_WEB, false)) {
+      getArguments().remove(ARG_OPEN_WEB);
+      pendingAutoEnter = true;
+    }
+    // 独立 APK：第一次进入就绪后自动打开酒馆，不要求用户先点「进入」。
+    autoEnterOnReady =
+        !requireContext().getSharedPreferences("tavern-apk", 0).getBoolean("entered", false);''')
+    replace(launch,
+            '          if (pendingAutoEnter && !webEntryUrl().isEmpty()) {',
+            '''          if (autoEnterOnReady && isResumed() && !webEntryUrl().isEmpty()) {
+            autoEnterOnReady = false;
+            android.content.Context context = getContext();
+            if (context != null)
+              context
+                  .getSharedPreferences("tavern-apk", 0)
+                  .edit()
+                  .putBoolean("entered", true)
+                  .apply();
+            pendingAutoEnter = true;
+          }
+          if (pendingAutoEnter && !webEntryUrl().isEmpty()) {''')
     # 首次只自动发起一次；失败后由启动按钮重试，避免恢复界面时无限重试。
-    replace(launch, '        ui.post(refreshState);', '''        ui.post(refreshState);
-        android.content.SharedPreferences prefs = requireContext().getSharedPreferences("tavern-apk", 0);
-        if (!prefs.getBoolean("started", false)) {
-            prefs.edit().putBoolean("started", true).apply();
-            ui.post(() -> {
-                View view = getView();
-                if (view != null && isResumed()) doStart(requireActivity(),
-                        view.findViewById(R.id.launch_status), view.findViewById(R.id.launch_start));
-            });
-        }''')
+    replace(launch,
+            '''    ui.removeCallbacks(refreshState);
+    ui.post(refreshState);
+  }
+
+  @Override
+  public void onPause() {''',
+            '''    ui.removeCallbacks(refreshState);
+    ui.post(refreshState);
+    // 独立 APK：首次打开自动启动一次；失败后由「启动」按钮重试。
+    android.content.SharedPreferences prefs =
+        requireContext().getSharedPreferences("tavern-apk", 0);
+    if (!prefs.getBoolean("started", false)) {
+      prefs.edit().putBoolean("started", true).apply();
+      ui.post(
+          () -> {
+            View view = getView();
+            Activity activity = getActivity();
+            if (view != null
+                && activity != null
+                && isResumed()
+                && !controller.isStarting()
+                && !controller.isStopping()
+                && webEntryUrl().isEmpty()) {
+              doStart(
+                  activity,
+                  view.findViewById(R.id.launch_status),
+                  view.findViewById(R.id.launch_start));
+            }
+          });
+    }
+  }
+
+  @Override
+  public void onPause() {''')
+    replace(java / 'ui/WebPreviewActivity.java',
+            '      WebView view = new WebView(new android.content.MutableContextWrapper(this));',
+            '''      if (com.deepseekharness.app.BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true);
+      WebView view = new WebView(new android.content.MutableContextWrapper(this));''')
     # 独立包不可接受上游 DSHA 的 APK 更新；Tavern 内的源码更新保持原样。
-    update = java / 'core/UpdateEngine.java'
-    replace(update, '    private void check(boolean startup) {', '''    private void check(boolean startup) {
-        if (com.deepseekharness.app.BuildConfig.APPLICATION_ID.equals("io.github.flizzywine.dshtavern")) {
-            if (!startup) finishState("idle", "酒馆代码请在酒馆内更新；安卓安装包请从 DSH Tavern 发布页下载。");
-            return;
-        }''')
+    replace(java / 'core/UpdateEngine.java', '  private void check(boolean startup) {',
+            f'''  private void check(boolean startup) {{
+    if (com.deepseekharness.app.BuildConfig.APPLICATION_ID.equals("{APPLICATION_ID}")) {{
+      if (!startup)
+        finishState("idle", "酒馆代码请在酒馆内更新；安卓安装包请从 DSH Tavern 发布页下载。");
+      return;
+    }}''')
+    # 上游单测按 web profile 断言启动顺序；独立包固定 tavern，并多一步安装检查。
+    pipeline_test = app / 'src/test/java/com/deepseekharness/app/core/StartupPipelineTest.java'
+    replace(pipeline_test,
+            '''    public void beforeLaunch(String id) throws IOException {
+      step("activate");
+    }''',
+            '''    public void beforeLaunch(String id) throws IOException {
+      step("activate");
+    }
+
+    public void installTavern() throws Exception {
+      step("install-tavern");
+    }''')
+    replace(pipeline_test,
+            '    assertEquals("web", new StartupPipeline(f, f).prepare(1, false, f));',
+            '    assertEquals("tavern", new StartupPipeline(f, f).prepare(1, false, f));')
+    replace(pipeline_test, '''            "activate",
+            "unlock",''', '''            "activate",
+            "install-tavern",
+            "unlock",''')
     shutil.copyfile(source / 'LICENSE', assets / 'DSHA-LICENSE.txt')
 
 

@@ -177,6 +177,8 @@ if [ "\$1" = "--version" ]; then
 fi
 [ "\$1" = "--config.update-notifier=false" ] || exit 93
 shift
+[ "\$1" = "--config.fetchTimeout=600000" ] || exit 96
+shift
 if [ "\$1" = "--dir" ] && [ "\$2" = "${new URL('..', import.meta.url).pathname.replace(/\/$/, '')}" ]; then
   printf 'dependencies\\n' >> "${events}"
   : > "${dependenciesReady}"

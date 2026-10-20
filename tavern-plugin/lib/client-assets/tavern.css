@@ -2770,6 +2770,16 @@ body.dsh-tavern-shell-active [class*="_headerUtilities"]:has(.dsh-tavern-header-
   }
   /* 原生右栏入口悬浮在顶栏右上角（见上方 header.corner 规则），标题行给它让出一格。 */
   body.dsh-tavern-shell-active [data-phase] header:has([data-conversation-header-corner] button) [class*="_titleRow"] { padding-right: 44px; }
+  /* dsh-web-mobile 3.1.0 在 [data-mobile-nav="frame"] 下把 titleRow 里的 corner 设成
+     display:none !important，用它的文件按钮替代右侧栏入口。酒馆要的是宿主的通用右侧栏
+     按钮（打开上次的页），所以用更高的特异性把它放出来，并隐藏重复的文件按钮；
+     corner 里没有按钮时（面板已展开）文件按钮保留作兜底。 */
+  body.dsh-tavern-shell-active [data-mobile-nav="frame"] [data-phase] header:has([data-conversation-header-corner]):has([data-conversation-header-corner]) [data-conversation-header-corner] {
+    display: flex !important;
+  }
+  body.dsh-tavern-shell-active [data-mobile-nav="frame"] [data-phase] header:has([data-conversation-header-corner] button) [data-mobile-nav="files"] {
+    display: none !important;
+  }
   body.dsh-tavern-shell-active :is([data-phase] > header, [data-slot="conversation.header"] > header) {
     position: relative; z-index: var(--dsh-play-z-header); flex: none;
     padding: 2px 4px 0;
@@ -2786,6 +2796,15 @@ body.dsh-tavern-shell-active [class*="_headerUtilities"]:has(.dsh-tavern-header-
   /* 有快捷入口时留出固定的一份宽度，量出来的可用空间才不会随收起数量变化。 */
   body.dsh-tavern-shell-active :is([data-phase] > header, [data-slot="conversation.header"] > header) [class*="_headerUtilities"]:has(.dsh-tavern-header-items) {
     flex: 0 1 auto; min-width: 0;
+  }
+  /* 兜底：dsh-web-mobile 在 `header:has(_headerLeading)` 下把整个 utilities 设成
+     display:none !important（手机上 header 带侧栏开关时命中）。上面那条覆盖依赖
+     body.dsh-tavern-shell-active，一旦这个类没加上（例如侧栏是抽屉、从未挂载），
+     顶栏会整块消失，只剩宿主角落的文件按钮。这条只认「里面装着酒馆按钮」，
+     与 body 类无关；重复 :has 是为了把特异性压过宿主那条 (0,4,1)。
+     注意用后代 :has（宿主在 utilities 里还套了一层 slot 包装 div）。 */
+  header:has([class*="_headerLeading"]) [class*="_headerUtilities"]:has(.dsh-tavern-header-items):has(.dsh-tavern-header-items):has(.dsh-tavern-header-items) {
+    display: flex !important; flex: 0 1 auto !important; min-width: 0 !important;
   }
   body.dsh-tavern-shell-active :is([data-phase] > header, [data-slot="conversation.header"] > header) .dsh-tavern-header-action-label { display: none; }
   body.dsh-tavern-shell-active :is([data-phase] > header, [data-slot="conversation.header"] > header) :is(.dsh-tavern-header-settings, .dsh-tavern-export-action) {
@@ -3136,29 +3155,17 @@ html[data-dsh-text-layout] :is(.dsh-tavern-assistant, .dsh-tavern-user-bubble, .
     /* 宿主角落按钮浮在这个位置；上游给的是固定 44px，这里同样留出一格。 */
     padding-right: 44px;
   }
-  /* 宿主自己的「N 个子智能体」触发器 + 全屏是不可缩的：390px 下它要 131px，
-     而标题区只分到 110px，多出的 21px 直接压到快捷入口上（实测重叠 27px，
-     全屏按钮点不到）。允许它收缩，文字用省略号。 */
+  /* 动作组里是固定尺寸的图标按钮（侧栏开关、文件、全屏）：容器可以被 flex 压窄，
+     但按钮不会跟着缩，压到 40px 就会互相覆盖。保持自然宽度，让标题区收缩；
+     标题栏本身有最小宽度和省略号，不会因此把页面撑开。 */
   body.dsh-tavern-shell-active header:has([class*="_headerUtilities"]) [class*="_headerActions"] {
-    flex: 0 1 auto; min-width: 40px; gap: 0;
-  }
-  body.dsh-tavern-shell-active header:has([class*="_headerUtilities"]) [class*="_headerActions"] > :not(.dsh-tavern-play-fullscreen) {
-    min-width: 40px; overflow: hidden;
-  }
-  body.dsh-tavern-shell-active header:has([class*="_headerUtilities"]) [class*="_headerActions"] > :not(.dsh-tavern-play-fullscreen) span {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: none; min-width: 0; gap: 0;
   }
   body.dsh-tavern-shell-active header:has([class*="_headerUtilities"]) [class*="_crumbs"] {
     flex: 1 1 auto; min-width: 0; overflow: hidden;
   }
 }
-/* 手机竖屏：宿主的触发器实测 91px，占掉整整两格按钮的位置（430px 以下放不下
-   3 个图标 + ⋮）。藏掉它，把位置让给快捷入口；固定开销随之降到 156px。 */
-@media (max-width: 429px) {
-  body.dsh-tavern-shell-active header:has([class*="_headerUtilities"]) [class*="_headerActions"] > :not(.dsh-tavern-play-fullscreen) {
-    display: none !important;
-  }
-  body.dsh-tavern-shell-active header:has([class*="_headerUtilities"]) [class*="_titleRow"] {
-    --dsh-tavern-header-fixed: 156px;
-  }
-}
+/* 0.2.x 把 headerActions 渲染成一个 display:contents 的插槽，宿主的侧栏开关、文件入口
+   和酒馆的全屏按钮都挂在这个插槽里。按「直接子元素」隐藏会命中整个插槽，把这三个按钮
+   一起藏掉，只剩右侧一片空白；窄屏也不该再按 156px 预算，因为动作组仍然占位。
+   子智能体触发器改由可收缩规则处理（见上面的 headerActions 规则）。 */

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "revision": "977ce6f8b0bdf2809ecd3927d94a706b6b5d0b21",
-  "releaseSequence": 767,
+  "revision": "1e9bd1b6d1bbb14124f191fefa10ebd09d007f3d",
+  "releaseSequence": 773,
   "version": "3.0.0",
   "files": [
     {
@@ -61,8 +61,8 @@
     },
     {
       "path": "bin/desktop-profile-installation.mjs",
-      "sha256": "b3ff13274b7d4e2b1b679323279f4f0fa4377769d2c9fc3e4775c612271b4c52",
-      "size": 7096
+      "sha256": "f07ccec1a596e30786478cbfb58afaec74771be9c8b2a0c2a8b7f60a3902866c",
+      "size": 10161
     },
     {
       "path": "bin/dev-sync-cli.sh",
@@ -121,8 +121,8 @@
     },
     {
       "path": "bin/launcher-environment.mjs",
-      "sha256": "c043277dbcad7ed0812f07991f47c50d9773ffee9531c7231f5bfb2bd64ca426",
-      "size": 11837
+      "sha256": "9d8f267affdeaa389cf3fd5410007a2ae7416f27e2413a4fdcdc4ea5e850cf16",
+      "size": 12050
     },
     {
       "path": "bin/launcher-settings.mjs",
@@ -141,8 +141,8 @@
     },
     {
       "path": "bin/official-desktop-runtime.cjs",
-      "sha256": "d37661959497a386cbf225dfc65b9522dc2d840cd4a1b3ed0b904f9130edd1a6",
-      "size": 5998
+      "sha256": "8f6554a016924769be70144f6fbe7ba6365d00d95f04d9f52ee90467049a454c",
+      "size": 9307
     },
     {
       "path": "bin/plugin-dependencies.mjs",
@@ -306,13 +306,13 @@
     },
     {
       "path": "install.ps1",
-      "sha256": "b1b7139823b6e51056b661ffe3b9ef09d054bd55f23b4f00d6ff988fab7d79a3",
-      "size": 85671
+      "sha256": "59bf6cad21e23e7a99342f8a42ae9a872cc62485a161d5fa8eedd2709ee4bdee",
+      "size": 88980
     },
     {
       "path": "install.sh",
-      "sha256": "aa4160c030234af7eda18aae0900e6449200a8f78f3248f9da8ee02cb638a871",
-      "size": 65321
+      "sha256": "182ea66bf0a7f2d739d2accc6669699993f6965f9820fbe598810523ad37fb3b",
+      "size": 68630
     },
     {
       "path": "package.json",
@@ -336,12 +336,12 @@
     },
     {
       "path": "patches/dsh-web-mobile@3.1.0.patch",
-      "sha256": "b151174b09138f5a19067f2593383b1cd6586547748ab6848e3e3e061d0a270b",
-      "size": 858
+      "sha256": "f4e306c03ef6fb2ffca172bcac2f1f72debff28a56bdc2b966a304ccd7fb5fa5",
+      "size": 2173
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "4b9439b33ed19f0291be48dc523725c4de378948a54c02dae7113f6caeda2e75",
+      "sha256": "f4fa84e87e5d9bac969a55a10aa87053da176dc3b3315529bf0ae0afa1665fca",
       "size": 87189
     },
     {
@@ -456,8 +456,8 @@
     },
     {
       "path": "tavern-plugin/lib/application-updater.js",
-      "sha256": "086a393ade848b5fdfb8afb32437d07555788248098f4e5f1e9cd714815d7f6e",
-      "size": 39767
+      "sha256": "c91cef63b3f2ef3c1e0b638773778fd717cf04117fca13b219f8bd5c082ac6a4",
+      "size": 39792
     },
     {
       "path": "tavern-plugin/lib/background-agent-runner.js",
@@ -491,13 +491,13 @@
     },
     {
       "path": "tavern-plugin/lib/client-assets/tavern.css",
-      "sha256": "618710c55f3dca5e6747175c7f187b99c9c921a865fc09a436a9c1f469cbb40a",
-      "size": 302220
+      "sha256": "ac1032ebec1510114730c5716259a1c4224c5791fb6fc4f6123c1b6452b17826",
+      "size": 303410
     },
     {
       "path": "tavern-plugin/lib/client.js",
-      "sha256": "6670ae37023bce143483a66e8f7aab0c4405c4005054ef73f24432909918554e",
-      "size": 1977049
+      "sha256": "6ec215124af060b2b9ccce994f55786b759d3c24df5154bf745dfcb1a46901e5",
+      "size": 1981326
     },
     {
       "path": "tavern-plugin/lib/cordis-inspect.js",
@@ -4481,8 +4481,8 @@
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/client.js",
-      "sha256": "e1715d37ef3a7ff4f96c7c62a9cfc04d5901c578c5af6593be35df08aa9e82c8",
-      "size": 13021
+      "sha256": "fb14d968ef88650d010ffffb70a83b31ff6143f9fa4df0eb1b750923de146c5b",
+      "size": 13045
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/cordis.patch.yml",
@@ -4496,13 +4496,18 @@
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/index.js",
-      "sha256": "e106e123164307a4e0ac96c22ff30382c9f1beb679bf4ed05bd5c7e4c5b5cb17",
-      "size": 8829
+      "sha256": "478b81a5b7c94d83bbe652f06112cae1c8ee70563f98150ea85beea67c1ccce1",
+      "size": 9046
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/lib/helper.mjs",
       "sha256": "0ae9fe70a8857b7416452b8f0e7d4ff95a503e3f328d88862e3ce841da634692",
       "size": 9373
+    },
+    {
+      "path": "tavern-plugin/packages/dsh-profile-bridge/lib/next.mjs",
+      "sha256": "8e1ba1ddf010bdc00a0044784a2706397fd84668afec543abce6afef639cd712",
+      "size": 2424
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/lib/shortcut.mjs",
@@ -4511,13 +4516,13 @@
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/lib/state.mjs",
-      "sha256": "05bee49ff829011c8c4860aaf3c55ef326b710197ef8f9cb562eda9223a32a13",
-      "size": 10638
+      "sha256": "47f8c11531d34953bf75a88f1c24997a4f8af7a7eef4eb8e82bece09c8fa74cc",
+      "size": 10937
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/lib/worker.mjs",
-      "sha256": "e41ded17315c46ee618946a9e76e847684b9c08eaf0c413672407cf7dfe5e45e",
-      "size": 1435
+      "sha256": "1fe490ff2f1c78fca50b5deab1f1b2dae965c6e1168f0273c6065569186e97dd",
+      "size": 2183
     },
     {
       "path": "tavern-plugin/packages/dsh-profile-bridge/LICENSE",
@@ -4966,8 +4971,8 @@
     },
     {
       "path": "tavern-plugin/src/client/features/text-layout.js",
-      "sha256": "51f5665637dfa1b552fca07aa3f9ed8c6490ffd3342268b10370bf41964b02a0",
-      "size": 6746
+      "sha256": "e4babfaf2e20a0ba16f05e0d96cb3adf90f4f65bc78bc6546d53f4346fae0149",
+      "size": 8957
     },
     {
       "path": "tavern-plugin/src/client/features/turn-history.js",
@@ -5041,8 +5046,8 @@
     },
     {
       "path": "tavern-plugin/src/client/main.js",
-      "sha256": "9edc8340c0795f08b88ed829a09b07e936e71e740db4d31dbb2c02350234221c",
-      "size": 66067
+      "sha256": "1b46f9418f7f51eb824c370a345b001e1bde1c28c783330043228b78db56c979",
+      "size": 66940
     },
     {
       "path": "tavern-plugin/src/client/modules/assistant-visibility.js",
